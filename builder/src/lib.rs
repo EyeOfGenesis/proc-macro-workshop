@@ -29,7 +29,6 @@ fn get_fields(input: &DeriveInput) -> &syn::Fields {
 }
 
 fn get_inner_option_type(ty: &syn::Type) -> Option<&syn::Type> {
-    let option_ident = proc_macro2::Ident::new("Option", proc_macro2::Span::call_site());
     if let syn::Type::Path(syn::TypePath {
         qself: None,
         path: syn::Path { segments, .. },
@@ -42,7 +41,7 @@ fn get_inner_option_type(ty: &syn::Type) -> Option<&syn::Type> {
             ..
         }) = segments.iter().next()
         {
-            if ident == &option_ident {
+            if ident == "Option" {
                 if let Some(syn::GenericArgument::Type(inner_ty)) = args.iter().next() {
                     return Some(inner_ty);
                 }
@@ -56,7 +55,7 @@ fn gen_builder_struct(input: &DeriveInput, ident: &syn::Ident) -> proc_macro2::T
     let fields = get_fields(input).iter().map(|field| {
         let field_ident = field.ident.as_ref().unwrap();
         let field_ty = &field.ty;
-        if let Some(inner_ty) = get_inner_option_type(&field_ty) {
+        if let Some(inner_ty) = get_inner_option_type(field_ty) {
             return quote! { #field_ident: std::option::Option<#inner_ty> };
         }
         quote! { #field_ident: std::option::Option<#field_ty> }
@@ -74,10 +73,10 @@ fn gen_build_fn(input: &DeriveInput) -> proc_macro2::TokenStream {
     let field_setters = fields.iter().map(|field| {
         let field_ident = field.ident.as_ref().unwrap();
         let field_ty = &field.ty;
-        if let Some(_ty) = get_inner_option_type(&field_ty) {
+        if get_inner_option_type(field_ty).is_some() {
             return quote! { #field_ident: self.#field_ident.clone() };
         }
-        let err_msg = format!("{} value not supplied", field_ident);
+        let err_msg = format!("{field_ident} value not supplied");
         let field_setter = quote! {
             self.#field_ident
                 .as_ref()
@@ -104,7 +103,7 @@ fn gen_builder_impl(input: &DeriveInput, ident: &syn::Ident) -> proc_macro2::Tok
     let builder_impl_fns = fields.iter().map(|field| {
         let field_ident = field.ident.as_ref().unwrap();
         let field_ty = &field.ty;
-        if let Some(inner_ty) = get_inner_option_type(&field_ty) {
+        if let Some(inner_ty) = get_inner_option_type(field_ty) {
             return quote! {
                 fn #field_ident(&mut self, #field_ident: #inner_ty) -> &mut Self {
                     self.#field_ident = std::option::Option::Some(#field_ident);
